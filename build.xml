@@ -1,0 +1,30 @@
+<project name="jetty-unicode" default="build-patched-jetty">
+  <property name="patched.jetty.version" value="6.1.26"/>
+  <property name="patched.jetty.name" value="jetty-${patched.jetty.version}"/>
+  <property name="patched.jetty.build.dir" value="jetty_build"/>
+  <property name="patched.jetty.src.dir" value="${patched.jetty.build.dir}/${patched.jetty.name}"/>
+  <property name="patched.jetty.patch1" value="JETTY-1340-1.patch"/>
+  <property name="patched.jetty.patch2" value="JETTY-1340-2.patch"/>
+
+  <target name="build-patched-jetty">
+    <sequential>
+      <mkdir dir="${patched.jetty.build.dir}"/>
+      <get src="http://dist.codehaus.org/jetty/${patched.jetty.name}/${patched.jetty.name}-src.zip" 
+	   dest="${patched.jetty.build.dir}/${patched.jetty.name}-src.zip"/>
+      <unzip src="${patched.jetty.build.dir}/${patched.jetty.name}-src.zip" dest="${patched.jetty.build.dir}"/>
+      <patch patchfile="${patched.jetty.patch1}" 
+             strip="0"
+             dir="${patched.jetty.src.dir}"/>
+      <patch patchfile="${patched.jetty.patch2}" 
+             strip="0"
+             dir="${patched.jetty.src.dir}"/>
+      <exec dir="${patched.jetty.src.dir}" executable="mvn">
+	<arg value="package"/>
+	<arg value="-DskipTests"/>
+      </exec>
+      <copy file="${patched.jetty.src.dir}/modules/jetty/target/jetty-${patched.jetty.version}.jar" todir="lib"/>
+      <copy file="${patched.jetty.src.dir}/modules/util/target/jetty-util-${patched.jetty.version}.jar" todir="lib"/>
+      <copy file="${patched.jetty.src.dir}/modules/start/target/start-${patched.jetty.version}.jar" todir="lib"/>
+    </sequential>
+  </target>
+</project>

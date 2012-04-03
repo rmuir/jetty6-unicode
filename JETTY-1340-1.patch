@@ -1,0 +1,89 @@
+Index: modules/jetty/src/test/java/org/mortbay/jetty/HttpGeneratorTest.java
+===================================================================
+--- modules/jetty/src/test/java/org/mortbay/jetty/HttpGeneratorTest.java	(revision 6392)
++++ modules/jetty/src/test/java/org/mortbay/jetty/HttpGeneratorTest.java	(working copy)
+@@ -301,5 +301,30 @@
+         String response = new String(endp.getOut().asArray(),StringUtil.__UTF8);
+         assertTrue(response.startsWith("HTTP/1.1 200 OK\r\nContent-Length: 1025\r\n\r\n\u05531234567890"));
+                 
+-    }    
++    }
++    
++    public void testOutputUnicode() throws Exception {
++      Buffer sb=new ByteArrayBuffer(1500);
++      Buffer bb=new ByteArrayBuffer(8096);
++      HttpFields fields = new HttpFields();
++      ByteArrayEndPoint endp = new ByteArrayEndPoint(new byte[0],4096);
++      HttpGenerator hb = new HttpGenerator(new SimpleBuffers(new Buffer[]{sb,bb}),endp, sb.capacity(), bb.capacity());
++
++      hb.setResponse(200,"OK");
++      
++      Output output = new Output(hb,10000);
++      OutputWriter writer = new OutputWriter(output);
++      writer.setCharacterEncoding(StringUtil.__UTF8);
++      
++      char[] chars = new char[2];
++      chars[0]='\ud800';
++      chars[1]='\udf08';
++      writer.write(chars);
++      
++      hb.completeHeader(fields,true);
++      hb.flush();
++      String response = new String(endp.getOut().asArray(),StringUtil.__UTF8);
++      assertTrue(response.startsWith("HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n\ud800\udf08"));
++    }
++      
+ }
+Index: modules/jetty/src/main/java/org/mortbay/jetty/AbstractGenerator.java
+===================================================================
+--- modules/jetty/src/main/java/org/mortbay/jetty/AbstractGenerator.java	(revision 6392)
++++ modules/jetty/src/main/java/org/mortbay/jetty/AbstractGenerator.java	(working copy)
+@@ -805,7 +805,14 @@
+                         for (int i = 0; i < chars; i++)
+                         {
+                             int code = s[offset+i];
+-
++                            // high surrogate
++                            if (code >= 0xD800 && code <= 0xDBFF && i+1 < chars) {
++                              int low = s[offset+i+1];
++                              if (low >= 0xDC00 && low <= 0xDFFF) {
++                                i++; // confirmed a low, we have a surrogate pair.
++                                code = (code << 10) + low + 0xfca02400;
++                              }
++                            }
+                             if ((code & 0xffffff80) == 0) 
+                             {
+                                 // 1b
+Index: modules/util/src/test/java/org/mortbay/util/Utf8StringBufferTest.java
+===================================================================
+--- modules/util/src/test/java/org/mortbay/util/Utf8StringBufferTest.java	(revision 6392)
++++ modules/util/src/test/java/org/mortbay/util/Utf8StringBufferTest.java	(working copy)
+@@ -20,7 +20,7 @@
+     public void testUtfStringBuffer()
+         throws Exception
+     {
+-        String source="abcd012345\n\r\uffff\u0fff\u00ff\u000f\u0000jetty";
++        String source="abcd012345\n\r\uffff\u0fff\u00ff\u000f\u0000jetty\ud800\udf08";
+         byte[] bytes = source.getBytes(StringUtil.__UTF8);
+         Utf8StringBuffer buffer = new Utf8StringBuffer();
+         for (int i=0;i<bytes.length;i++)
+Index: modules/util/src/main/java/org/mortbay/util/Utf8StringBuffer.java
+===================================================================
+--- modules/util/src/main/java/org/mortbay/util/Utf8StringBuffer.java	(revision 6392)
++++ modules/util/src/main/java/org/mortbay/util/Utf8StringBuffer.java	(working copy)
+@@ -117,8 +117,14 @@
+             {
+                 // 10xxxxxx
+                 _bits=(_bits<<6)|(b&0x3f);
+-                if (--_more==0)
++                if (--_more==0) {
++                  if (_bits <= 0xffff) {
+                     _buffer.append((char)_bits);
++                  } else {
++                    _buffer.append((char) ((_bits >> 0xA) + 0xD7C0));
++                    _buffer.append((char) ((_bits & 0x3FF) + 0xDC00));
++                  }
++                }
+             }
+         }
+     }
